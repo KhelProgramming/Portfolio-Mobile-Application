@@ -1,5 +1,5 @@
-import { Canvas, useThree, useFrame } from '@react-three/fiber/native';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Canvas, useThree } from '@react-three/fiber/native';
+import { Suspense, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import useControls from 'r3f-native-orbitcontrols';
@@ -28,73 +28,7 @@ const KEYCAP_MAP = {
   'Cube035_2': 'python',
 };
 
-function Controls({ onTouchStart, onTouchEnd }) {
-  const controlsRef = useRef();
-  const { camera, gl } = useThree();
-  const lastTouchTime = useRef(0);
-
-  useFrame(() => {
-    if (controlsRef.current) {
-      // Check if enough time has passed to resume auto-rotate
-      const now = Date.now();
-      if (lastTouchTime.current > 0 && now - lastTouchTime.current > 2000) {
-        if (!controlsRef.current.autoRotate) {
-          controlsRef.current.autoRotate = true;
-          console.log('🔄 Auto-rotate RESUMED');
-        }
-        lastTouchTime.current = 0;
-      }
-    }
-  });
-
-  useEffect(() => {
-    if (!controlsRef.current) return;
-
-    const controls = controlsRef.current;
-    
-    // Set up auto-rotate
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 1.5;
-    controls.enableZoom = true;
-    controls.enablePan = false;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 8;
-    controls.maxDistance = 60;
-
-    console.log('✅ OrbitControls configured - Auto-rotate enabled');
-
-    // Listen for touch events
-    const handleStart = () => {
-      controls.autoRotate = false;
-      lastTouchTime.current = Date.now();
-      console.log('✋ Touch detected - Auto-rotate STOPPED');
-      if (onTouchStart) onTouchStart();
-    };
-
-    const handleEnd = () => {
-      console.log('👉 Touch released - Auto-rotate will RESUME in 2 seconds');
-      if (onTouchEnd) onTouchEnd();
-    };
-
-    gl.domElement.addEventListener('touchstart', handleStart);
-    gl.domElement.addEventListener('touchend', handleEnd);
-
-    return () => {
-      gl.domElement.removeEventListener('touchstart', handleStart);
-      gl.domElement.removeEventListener('touchend', handleEnd);
-    };
-  }, [gl, onTouchStart, onTouchEnd]);
-
-  return (
-    <orbitControls
-      ref={controlsRef}
-      args={[camera, gl.domElement]}
-    />
-  );
-}
-
-function SceneContent({ setSceneReady, onTouchStart, onTouchEnd }) {
+function SceneContent({ setSceneReady }) {
   const { camera, scene, gl } = useThree();
   const raycasterRef = useRef(new THREE.Raycaster());
   const pointerRef = useRef(new THREE.Vector2());
@@ -127,13 +61,12 @@ function SceneContent({ setSceneReady, onTouchStart, onTouchEnd }) {
       <Suspense fallback={null}>
         <KeyboardModel />
       </Suspense>
-
-      <Controls onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} />
     </>
   );
 }
 
 export default function KeyboardScene({ onKeyPress }) {
+  const [OrbitControls, events] = useControls();
   const sceneDataRef = useRef(null);
   const lastTapTime = useRef(0);
 
@@ -244,24 +177,42 @@ export default function KeyboardScene({ onKeyPress }) {
     }
   };
 
-  // Tap gesture
+  // Tap gesture - separate from controls
   const tapGesture = Gesture.Tap()
     .maxDuration(250)
     .numberOfTaps(1)
     .onEnd(handleTap);
 
   return (
-    <GestureDetector gesture={tapGesture}>
-      <View style={styles.container}>
+    <View style={styles.container}>
+      {/* OrbitControls gesture layer */}
+      <View {...events} style={StyleSheet.absoluteFill}>
         <Canvas camera={{ position: [20, 30, 25], fov: 55 }}>
+          <OrbitControls
+            enableDamping
+            dampingFactor={0.05}
+            rotateSpeed={0.8}
+            enableZoom={true}
+            zoomSpeed={0.8}
+            minDistance={8}
+            maxDistance={60}
+            enablePan={false}
+            autoRotate={true}
+            autoRotateSpeed={1.5}
+          />
           <SceneContent setSceneReady={handleSceneReady} />
         </Canvas>
-        
-        <View style={styles.hint} pointerEvents="none">
-          <Text style={styles.hintText}>Pinch to zoom • Drag to rotate • Tap keys 🎹</Text>
-        </View>
       </View>
-    </GestureDetector>
+
+      {/* Tap gesture layer on top */}
+      <GestureDetector gesture={tapGesture}>
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
+      </GestureDetector>
+      
+      <View style={styles.hint} pointerEvents="none">
+        <Text style={styles.hintText}>Pinch to zoom • Drag to rotate • Tap keys 🎹</Text>
+      </View>
+    </View>
   );
 }
 

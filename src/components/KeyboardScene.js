@@ -1,5 +1,5 @@
 import { Canvas, useThree } from '@react-three/fiber/native';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import useControls from 'r3f-native-orbitcontrols';
@@ -25,8 +25,86 @@ const KEYCAP_MAP = {
   'Cube035_2': 'python',
 };
 
-function SceneContent() {
+const languageNames = {
+  'html5': 'HTML5',
+  'css': 'CSS',
+  'github': 'GitHub',
+  'c': 'C Language',
+  'python': 'Python',
+  'typescript': 'TypeScript',
+  'react': 'React',
+  'java': 'Java',
+  'unity': 'Unity',
+  'csharp': 'C#',
+  'javascript': 'JavaScript',
+};
+
+function ClickHandler({ onKeyPress, handleTapRef }) {
   const { camera, scene, gl } = useThree();
+  const raycaster = useRef(new THREE.Raycaster()).current;
+
+  useEffect(() => {
+    console.log('✅ ClickHandler ready - Scene loaded');
+    
+    const handleTap = (e) => {
+      try {
+        const canvas = gl.domElement;
+        const rect = canvas.getBoundingClientRect();
+        
+        const pointer = new THREE.Vector2(
+          ((e.x - rect.left) / rect.width) * 2 - 1,
+          -((e.y - rect.top) / rect.height) * 2 + 1
+        );
+
+        console.log('👆 Tap at:', { x: e.x.toFixed(0), y: e.y.toFixed(0) });
+
+        raycaster.setFromCamera(pointer, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+
+        console.log(`🔍 Found ${intersects.length} intersections`);
+
+        if (intersects.length > 0) {
+          const clickedObject = intersects[0].object;
+          console.log('🖱️ Clicked:', clickedObject.name || '(unnamed)');
+          
+          let foundLanguage = KEYCAP_MAP[clickedObject.name];
+          
+          if (!foundLanguage && clickedObject.parent?.name) {
+            console.log('🔍 Checking parent:', clickedObject.parent.name);
+            foundLanguage = KEYCAP_MAP[clickedObject.parent.name];
+          }
+
+          if (foundLanguage) {
+            console.log(`🎯 PRESSED: ${languageNames[foundLanguage]}`);
+            
+            if (clickedObject.material?.emissive) {
+              const original = clickedObject.material.emissive.getHex();
+              clickedObject.material.emissive.setHex(0x4a9eff);
+              setTimeout(() => {
+                clickedObject.material.emissive.setHex(original);
+              }, 200);
+            }
+            
+            if (onKeyPress) onKeyPress(foundLanguage);
+          } else {
+            console.log('⚠️ No mapping for:', clickedObject.name);
+          }
+        } else {
+          console.log('❌ No objects hit');
+        }
+      } catch (error) {
+        console.error('❌ Click error:', error);
+      }
+    };
+
+    handleTapRef.current = handleTap;
+  }, [camera, scene, gl, raycaster, onKeyPress, handleTapRef]);
+
+  return null;
+}
+
+function SceneContent({ onKeyPress, handleTapRef }) {
+  const { camera } = useThree();
 
   useEffect(() => {
     camera.position.set(20, 30, 25);
@@ -34,14 +112,6 @@ function SceneContent() {
     camera.updateProjectionMatrix();
     console.log('✅ Camera positioned');
   }, [camera]);
-
-  useEffect(() => {
-    console.log('✅ Scene ready:', {
-      camera: !!camera,
-      scene: !!scene,
-      gl: !!gl,
-    });
-  }, [camera, scene, gl]);
 
   return (
     <>
@@ -53,101 +123,26 @@ function SceneContent() {
       <Suspense fallback={null}>
         <KeyboardModel />
       </Suspense>
+
+      <ClickHandler onKeyPress={onKeyPress} handleTapRef={handleTapRef} />
     </>
   );
-}
-
-function ClickHandler({ onKeyPress }) {
-  const { camera, scene, gl } = useThree();
-  const raycasterRef = useRef(new THREE.Raycaster());
-  const lastTapTime = useRef(0);
-
-  useEffect(() => {
-    console.log('✅ ClickHandler mounted with scene:', !!scene);
-  }, [scene]);
-
-  const handleTap = (e) => {
-    const now = Date.now();
-    if (now - lastTapTime.current < 300) {
-      console.log('⚠️ Double tap, ignoring');
-      return;
-    }
-    lastTapTime.current = now;
-
-    try {
-      const canvas = gl.domElement;
-      const rect = canvas.getBoundingClientRect();
-      
-      const pointer = new THREE.Vector2(
-        ((e.x - rect.left) / rect.width) * 2 - 1,
-        -((e.y - rect.top) / rect.height) * 2 + 1
-      );
-
-      console.log('👆 Tap at:', { x: e.x.toFixed(0), y: e.y.toFixed(0) });
-
-      raycasterRef.current.setFromCamera(pointer, camera);
-      const intersects = raycasterRef.current.intersectObjects(scene.children, true);
-
-      console.log(`🔍 Found ${intersects.length} intersections`);
-
-      if (intersects.length > 0) {
-        const clickedObject = intersects[0].object;
-        console.log('🖱️ Clicked:', clickedObject.name || '(unnamed)');
-        
-        let foundLanguage = KEYCAP_MAP[clickedObject.name];
-        
-        if (!foundLanguage && clickedObject.parent?.name) {
-          console.log('🔍 Checking parent:', clickedObject.parent.name);
-          foundLanguage = KEYCAP_MAP[clickedObject.parent.name];
-        }
-
-        if (foundLanguage) {
-          const languageNames = {
-            'html5': 'HTML5',
-            'css': 'CSS',
-            'github': 'GitHub',
-            'c': 'C Language',
-            'python': 'Python',
-            'typescript': 'TypeScript',
-            'react': 'React',
-            'java': 'Java',
-            'unity': 'Unity',
-            'csharp': 'C#',
-            'javascript': 'JavaScript',
-          };
-          
-          console.log(`🎯 PRESSED: ${languageNames[foundLanguage]}`);
-          
-          if (clickedObject.material?.emissive) {
-            const original = clickedObject.material.emissive.getHex();
-            clickedObject.material.emissive.setHex(0x4a9eff);
-            setTimeout(() => {
-              clickedObject.material.emissive.setHex(original);
-            }, 200);
-          }
-          
-          if (onKeyPress) onKeyPress(foundLanguage);
-        } else {
-          console.log('⚠️ No mapping for:', clickedObject.name);
-        }
-      } else {
-        console.log('❌ No objects hit');
-      }
-    } catch (error) {
-      console.error('❌ Click error:', error);
-    }
-  };
-
-  return handleTap;
 }
 
 export default function KeyboardScene({ onKeyPress }) {
   const [OrbitControls, events] = useControls();
   const handleTapRef = useRef();
+  const lastTapTime = useRef(0);
 
   const tapGesture = Gesture.Tap()
     .maxDuration(250)
     .onEnd((e) => {
+      const now = Date.now();
+      if (now - lastTapTime.current < 300) {
+        return; // Prevent double tap
+      }
+      lastTapTime.current = now;
+
       if (handleTapRef.current) {
         handleTapRef.current(e);
       }
@@ -171,8 +166,7 @@ export default function KeyboardScene({ onKeyPress }) {
                 autoRotate={true}
                 autoRotateSpeed={1.5}
               />
-              <SceneContent />
-              <ClickHandlerSetup onKeyPress={onKeyPress} handleTapRef={handleTapRef} />
+              <SceneContent onKeyPress={onKeyPress} handleTapRef={handleTapRef} />
             </Canvas>
           </View>
         </GestureDetector>
@@ -183,16 +177,6 @@ export default function KeyboardScene({ onKeyPress }) {
       </View>
     </View>
   );
-}
-
-function ClickHandlerSetup({ onKeyPress, handleTapRef }) {
-  const handler = ClickHandler({ onKeyPress });
-  
-  useEffect(() => {
-    handleTapRef.current = handler;
-  }, [handler, handleTapRef]);
-
-  return null;
 }
 
 const styles = StyleSheet.create({

@@ -53,21 +53,30 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
 
     console.log('✅ ClickHandler mounted - Model loaded!');
     
-    // Log scene structure AFTER model loads
-    let meshCount = 0;
-    scene.traverse((child) => {
-      if (child.isMesh && child.name) {
-        meshCount++;
-        if (meshCount <= 5) {
-          console.log(`  📌 Mesh: "${child.name}"`);
-        }
-      }
-    });
-    console.log(`📊 Total meshes: ${meshCount}`);
-
     const canvas = gl.domElement;
+    
+    // CRITICAL: Ensure canvas can receive touch events
+    canvas.style.touchAction = 'none';
+    canvas.style.userSelect = 'none';
+    canvas.style.webkitUserSelect = 'none';
+    
+    // Add pointer events as fallback
+    const handlePointerDown = (e) => {
+      console.log('🟡 Pointer event detected!', e.pointerType);
+      // Convert pointer event to touch-like event for our handler
+      const fakeTouchEvent = {
+        touches: [{ clientX: e.clientX, clientY: e.clientY }],
+        changedTouches: [{ clientX: e.clientX, clientY: e.clientY }]
+      };
+      handleTouchStart(fakeTouchEvent);
+      
+      setTimeout(() => {
+        handleTouchEnd(fakeTouchEvent);
+      }, 50);
+    };
 
     const handleTouchStart = (e) => {
+      console.log('🟢 Touch START detected');
       const touch = e.touches[0];
       touchStart.current = {
         x: touch.clientX,
@@ -77,27 +86,27 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
     };
 
     const handleTouchEnd = (e) => {
+      console.log('🔴 Touch END detected');
       const touch = e.changedTouches[0];
       const endX = touch.clientX;
       const endY = touch.clientY;
       const endTime = Date.now();
 
-      // Check if it's a tap (not a drag)
+      // More lenient tap detection for testing
       const deltaX = Math.abs(endX - touchStart.current.x);
       const deltaY = Math.abs(endY - touchStart.current.y);
       const deltaTime = endTime - touchStart.current.time;
 
-      const isTap = deltaX < 10 && deltaY < 10 && deltaTime < 300;
+      const isTap = deltaX < 20 && deltaY < 20 && deltaTime < 500;
 
       if (!isTap) {
-        console.log('🔄 Drag detected, ignoring (deltaX:', deltaX, 'deltaY:', deltaY, ')');
+        console.log('🔄 Drag detected, ignoring');
         return;
       }
 
-      console.log('👆 Tap detected at:', { x: endX.toFixed(0), y: endY.toFixed(0) });
+      console.log('👆✅ TAP CONFIRMED at:', { x: endX.toFixed(0), y: endY.toFixed(0) });
 
       try {
-        // Get Canvas bounding box (actual position and size on screen)
         const rect = canvas.getBoundingClientRect();
         
         console.log('📦 Canvas bounds:', {
@@ -116,8 +125,7 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
           y: canvasY.toFixed(0)
         });
 
-        // Convert to normalized device coordinates (-1 to +1)
-        // Using Canvas dimensions, NOT screen dimensions
+        // Convert to normalized device coordinates
         const pointer = new THREE.Vector2(
           (canvasX / rect.width) * 2 - 1,
           -(canvasY / rect.height) * 2 + 1
@@ -131,11 +139,14 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
         console.log(`🔍 Found ${intersects.length} intersections`);
 
         if (intersects.length > 0) {
-          intersects.slice(0, 3).forEach((hit, i) => {
+          // Log ALL intersections for debugging
+          intersects.forEach((hit, i) => {
             console.log(`  ${i + 1}. "${hit.object.name || '(unnamed)'}" - dist: ${hit.distance.toFixed(2)}`);
           });
 
           const clickedObject = intersects[0].object;
+          console.log('🎯 CLICKED OBJECT:', clickedObject.name);
+          
           let foundLanguage = KEYCAP_MAP[clickedObject.name];
 
           if (!foundLanguage && clickedObject.parent?.name) {
@@ -149,9 +160,10 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
           }
 
           if (foundLanguage) {
-            console.log(`✅ Language: ${foundLanguage}`);
+            console.log(`✅ SUCCESS! Language: ${foundLanguage}`);
             console.log(`🎯 PRESSED: ${languageNames[foundLanguage]}`);
 
+            // Visual feedback
             if (clickedObject.material?.emissive) {
               const original = clickedObject.material.emissive.getHex();
               clickedObject.material.emissive.setHex(0x4a9eff);
@@ -163,26 +175,27 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
             if (onKeyPress) onKeyPress(foundLanguage);
           } else {
             console.log('⚠️ No mapping for:', clickedObject.name || '(unnamed)');
+            console.log('💡 Available mappings:', Object.keys(KEYCAP_MAP));
           }
         } else {
-          console.log('❌ No objects hit');
+          console.log('❌ No objects hit - raycast missed everything');
         }
       } catch (error) {
         console.error('❌ Error:', error);
       }
     };
 
-    // Attach to the Canvas element directly
+    // Attach multiple event types
     canvas.addEventListener('touchstart', handleTouchStart);
     canvas.addEventListener('touchend', handleTouchEnd);
+    canvas.addEventListener('pointerdown', handlePointerDown); // Fallback
 
-    console.log('✅ Touch listeners attached to Canvas');
+    console.log('✅ All event listeners attached to Canvas');
 
     return () => {
-      if (!modelLoaded) return;
-      
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [camera, scene, gl, raycaster, onKeyPress, modelLoaded]);
 
@@ -239,12 +252,14 @@ function SceneContent({ onKeyPress }) {
 
 export default function KeyboardScene({ onKeyPress }) {
   const [OrbitControls, events] = useControls();
+  const controlsRef = useRef();
 
   return (
     <View style={styles.container}>
       <View {...events} style={StyleSheet.absoluteFill}>
         <Canvas camera={{ position: [20, 30, 25], fov: 55 }}>
           <OrbitControls
+            ref={controlsRef}
             enableDamping={true}
             dampingFactor={0.05}
             rotateSpeed={0.8}
@@ -255,6 +270,8 @@ export default function KeyboardScene({ onKeyPress }) {
             enablePan={false}
             autoRotate={true}
             autoRotateSpeed={1.5}
+            onStart={() => console.log('🔄 Controls interaction started')}
+            onEnd={() => console.log('🔄 Controls interaction ended')}
           />
           <SceneContent onKeyPress={onKeyPress} />
         </Canvas>

@@ -1,6 +1,6 @@
-import { Canvas, useThree } from '@react-three/fiber/native';
-import { Suspense, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, Dimensions } from 'react-native';
+import { Canvas, useThree, useFrame } from '@react-three/fiber/native';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import useControls from 'r3f-native-orbitcontrols';
 import * as THREE from 'three';
 import KeyboardModel from '../models/Keyboard';
@@ -40,15 +40,20 @@ const languageNames = {
   'javascript': 'JavaScript',
 };
 
-function ClickHandler({ onKeyPress }) {
+function ClickHandler({ onKeyPress, modelLoaded }) {
   const { camera, scene, gl } = useThree();
   const raycaster = useRef(new THREE.Raycaster()).current;
   const touchStart = useRef({ x: 0, y: 0, time: 0 });
 
   useEffect(() => {
-    console.log('✅ ClickHandler mounted');
+    if (!modelLoaded) {
+      console.log('⏳ Waiting for model to load...');
+      return;
+    }
+
+    console.log('✅ ClickHandler mounted - Model loaded!');
     
-    // Log scene structure
+    // Log scene structure AFTER model loads
     let meshCount = 0;
     scene.traverse((child) => {
       if (child.isMesh && child.name) {
@@ -174,16 +179,19 @@ function ClickHandler({ onKeyPress }) {
     console.log('✅ Touch listeners attached to Canvas');
 
     return () => {
+      if (!modelLoaded) return;
+      
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [camera, scene, gl, raycaster, onKeyPress]);
+  }, [camera, scene, gl, raycaster, onKeyPress, modelLoaded]);
 
   return null;
 }
 
 function SceneContent({ onKeyPress }) {
   const { camera } = useThree();
+  const [modelLoaded, setModelLoaded] = useState(false);
 
   useEffect(() => {
     camera.position.set(20, 30, 25);
@@ -191,6 +199,11 @@ function SceneContent({ onKeyPress }) {
     camera.updateProjectionMatrix();
     console.log('✅ Camera ready');
   }, [camera]);
+
+  const handleModelLoad = () => {
+    console.log('🎨 Keyboard model loaded!');
+    setModelLoaded(true);
+  };
 
   return (
     <>
@@ -200,10 +213,12 @@ function SceneContent({ onKeyPress }) {
       <directionalLight position={[0, -5, 10]} intensity={1.2} />
 
       <Suspense fallback={null}>
-        <KeyboardModel />
+        <group onUpdate={handleModelLoad}>
+          <KeyboardModel />
+        </group>
       </Suspense>
 
-      <ClickHandler onKeyPress={onKeyPress} />
+      <ClickHandler onKeyPress={onKeyPress} modelLoaded={modelLoaded} />
     </>
   );
 }

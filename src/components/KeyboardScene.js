@@ -1,9 +1,11 @@
 import { Canvas, useThree, useFrame } from '@react-three/fiber/native';
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, Dimensions } from 'react-native';
 import useControls from 'r3f-native-orbitcontrols';
 import * as THREE from 'three';
 import KeyboardModel from '../models/Keyboard';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -189,6 +191,29 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
   return null;
 }
 
+function ModelLoadDetector({ onLoaded }) {
+  const { scene } = useThree();
+  const hasChecked = useRef(false);
+
+  useFrame(() => {
+    if (hasChecked.current) return;
+
+    // Check if model has loaded by checking for meshes
+    let meshCount = 0;
+    scene.traverse((child) => {
+      if (child.isMesh) meshCount++;
+    });
+
+    if (meshCount > 0) {
+      console.log('🎨 Model detected in scene! Meshes:', meshCount);
+      hasChecked.current = true;
+      onLoaded();
+    }
+  });
+
+  return null;
+}
+
 function SceneContent({ onKeyPress }) {
   const { camera } = useThree();
   const [modelLoaded, setModelLoaded] = useState(false);
@@ -200,11 +225,6 @@ function SceneContent({ onKeyPress }) {
     console.log('✅ Camera ready');
   }, [camera]);
 
-  const handleModelLoad = () => {
-    console.log('🎨 Keyboard model loaded!');
-    setModelLoaded(true);
-  };
-
   return (
     <>
       <ambientLight intensity={1} />
@@ -213,11 +233,10 @@ function SceneContent({ onKeyPress }) {
       <directionalLight position={[0, -5, 10]} intensity={1.2} />
 
       <Suspense fallback={null}>
-        <group onUpdate={handleModelLoad}>
-          <KeyboardModel />
-        </group>
+        <KeyboardModel />
       </Suspense>
 
+      <ModelLoadDetector onLoaded={() => setModelLoaded(true)} />
       <ClickHandler onKeyPress={onKeyPress} modelLoaded={modelLoaded} />
     </>
   );

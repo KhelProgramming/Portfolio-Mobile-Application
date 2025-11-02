@@ -1,11 +1,9 @@
-import { Canvas, useThree, useFrame } from '@react-three/fiber/native';
-import { Suspense, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View, Dimensions } from 'react-native';
+import { Canvas, useThree } from '@react-three/fiber/native';
 import useControls from 'r3f-native-orbitcontrols';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import * as THREE from 'three';
 import KeyboardModel from '../models/Keyboard';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -191,39 +189,37 @@ function ClickHandler({ onKeyPress, modelLoaded }) {
   return null;
 }
 
-function ModelLoadDetector({ onLoaded }) {
-  const { scene } = useThree();
-  const hasChecked = useRef(false);
-
-  useFrame(() => {
-    if (hasChecked.current) return;
-
-    // Check if model has loaded by checking for meshes
-    let meshCount = 0;
-    scene.traverse((child) => {
-      if (child.isMesh) meshCount++;
-    });
-
-    if (meshCount > 0) {
-      console.log('🎨 Model detected in scene! Meshes:', meshCount);
-      hasChecked.current = true;
-      onLoaded();
-    }
-  });
-
-  return null;
-}
-
 function SceneContent({ onKeyPress }) {
-  const { camera } = useThree();
+  const { camera, scene } = useThree();
   const [modelLoaded, setModelLoaded] = useState(false);
+  const loadCheckRef = useRef();
 
   useEffect(() => {
     camera.position.set(20, 30, 25);
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
     console.log('✅ Camera ready');
-  }, [camera]);
+
+    // Check for model loading
+    loadCheckRef.current = setInterval(() => {
+      let meshCount = 0;
+      scene.traverse((child) => {
+        if (child.isMesh) meshCount++;
+      });
+      
+      if (meshCount > 10) { // Model is loaded
+        console.log(`🎨 Keyboard model loaded! Found ${meshCount} meshes`);
+        setModelLoaded(true);
+        clearInterval(loadCheckRef.current);
+      }
+    }, 200);
+
+    return () => {
+      if (loadCheckRef.current) {
+        clearInterval(loadCheckRef.current);
+      }
+    };
+  }, [camera, scene]);
 
   return (
     <>
@@ -236,7 +232,6 @@ function SceneContent({ onKeyPress }) {
         <KeyboardModel />
       </Suspense>
 
-      <ModelLoadDetector onLoaded={() => setModelLoaded(true)} />
       <ClickHandler onKeyPress={onKeyPress} modelLoaded={modelLoaded} />
     </>
   );

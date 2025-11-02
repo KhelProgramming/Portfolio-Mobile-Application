@@ -92,10 +92,30 @@ function ClickHandler({ onKeyPress }) {
       console.log('👆 Tap detected at:', { x: endX.toFixed(0), y: endY.toFixed(0) });
 
       try {
-        // Convert to normalized device coordinates
+        // Get Canvas bounding box (actual position and size on screen)
+        const rect = canvas.getBoundingClientRect();
+        
+        console.log('📦 Canvas bounds:', {
+          left: rect.left.toFixed(0),
+          top: rect.top.toFixed(0),
+          width: rect.width.toFixed(0),
+          height: rect.height.toFixed(0)
+        });
+
+        // Calculate position RELATIVE to Canvas
+        const canvasX = endX - rect.left;
+        const canvasY = endY - rect.top;
+
+        console.log('📍 Position relative to Canvas:', {
+          x: canvasX.toFixed(0),
+          y: canvasY.toFixed(0)
+        });
+
+        // Convert to normalized device coordinates (-1 to +1)
+        // Using Canvas dimensions, NOT screen dimensions
         const pointer = new THREE.Vector2(
-          (endX / SCREEN_WIDTH) * 2 - 1,
-          -(endY / SCREEN_HEIGHT) * 2 + 1
+          (canvasX / rect.width) * 2 - 1,
+          -(canvasY / rect.height) * 2 + 1
         );
 
         console.log('🎯 Normalized:', { x: pointer.x.toFixed(3), y: pointer.y.toFixed(3) });

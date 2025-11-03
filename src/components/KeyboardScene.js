@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import KeyboardModel from '../models/Keyboard';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
+ 
 // Map of keycap names to their languages
 const KEYCAP_MAP = {
   'Key-HTML5018': 'html5',

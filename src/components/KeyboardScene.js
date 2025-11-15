@@ -11,7 +11,7 @@ const CAMERA_STATES = {
   },
   ZOOMED_IN: {
     position: new THREE.Vector3(0, 20, 18),
-    lookAt: new THREE.Vector3(-100, 2, -2),
+    lookAt: new THREE.Vector3(-4, 2, -2),
   }
 };
 
@@ -59,14 +59,22 @@ function CameraController({ isZoomedIn }) {
   const currentTarget = useRef(CAMERA_STATES.ZOOMED_OUT.position.clone());
   const autoRotateAngle = useRef(0);
   const lastZoomState = useRef(isZoomedIn);
+  const frameCount = useRef(0);
   
   useEffect(() => {
+    console.log('⏱️ CameraController mounted');
     camera.position.copy(CAMERA_STATES.ZOOMED_OUT.position);
   }, [camera]);
 
   useFrame((state, delta) => {
+    frameCount.current++;
+    
     // CRITICAL FIX: When zoom state changes, boost velocity for instant response
     if (lastZoomState.current !== isZoomedIn) {
+      const t0 = Date.now();
+      console.log(`⏱️ [Frame ${frameCount.current}] Zoom state changed!`);
+      console.log(`   From: ${lastZoomState.current} → To: ${isZoomedIn}`);
+      
       lastZoomState.current = isZoomedIn;
       
       // Give it a velocity KICK toward the new target
@@ -74,7 +82,9 @@ function CameraController({ isZoomedIn }) {
       const direction = new THREE.Vector3().subVectors(newTarget, camera.position).normalize();
       velocity.current.copy(direction.multiplyScalar(15)); // Instant boost!
       
-      console.log(`🚀 Zoom ${isZoomedIn ? 'IN' : 'OUT'} - velocity boosted!`);
+      const t1 = Date.now();
+      console.log(`⏱️ [${t1 - t0}ms] Velocity kick applied`);
+      console.log(`🚀 Zoom ${isZoomedIn ? 'IN' : 'OUT'} - animation starting NOW!`);
     }
     
     // Determine target based on zoom state
@@ -157,6 +167,17 @@ export default function KeyboardScene({ onKeyPress }) {
   
   const sceneRef = useRef(null);
   const raycaster = useRef(new THREE.Raycaster()).current;
+  
+  // Timer to track state changes
+  const stateChangeTimer = useRef(Date.now());
+
+  // Track isZoomedIn changes
+  useEffect(() => {
+    const now = Date.now();
+    const elapsed = now - stateChangeTimer.current;
+    console.log(`⏱️ [${elapsed}ms after button tap] isZoomedIn changed to: ${isZoomedIn}`);
+    stateChangeTimer.current = now;
+  }, [isZoomedIn]);
 
   // Raycast for keycap detection
   const performRaycast = useCallback((x, y) => {
@@ -199,7 +220,19 @@ export default function KeyboardScene({ onKeyPress }) {
   }, []);
 
   const handleZoomToggle = useCallback(() => {
-    setIsZoomedIn(prev => !prev);
+    console.log('⏱️ [0ms] Button tap detected');
+    const t0 = Date.now();
+    
+    setIsZoomedIn(prev => {
+      const t1 = Date.now();
+      console.log(`⏱️ [${t1 - t0}ms] Inside setIsZoomedIn`);
+      console.log(`   Previous state: ${prev}`);
+      console.log(`   New state: ${!prev}`);
+      return !prev;
+    });
+    
+    const t2 = Date.now();
+    console.log(`⏱️ [${t2 - t0}ms] setIsZoomedIn completed`);
   }, []);
 
   const handleCanvasTap = useCallback((event) => {

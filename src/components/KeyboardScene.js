@@ -10,7 +10,7 @@ const CAMERA_STATES = {
     lookAt: new THREE.Vector3(0, 0, 0),
   },
   ZOOMED_IN: {
-    position: new THREE.Vector3(0, 8, 18),
+    position: new THREE.Vector3(0, 20, 18),
     lookAt: new THREE.Vector3(0, 0, 0),
   }
 };
@@ -92,16 +92,9 @@ function CameraController({ isZoomedInRef }) {
     }
     
     // Spring physics
-    const stiffness = 10.0;
-    const damping = 0.8;
-    
-    const displacement = new THREE.Vector3().subVectors(targetPos, camera.position);
-    const force = displacement.multiplyScalar(stiffness);
-    const dampingForce = velocity.current.clone().multiplyScalar(-damping);
-    
-    velocity.current.add(force.add(dampingForce).multiplyScalar(delta));
-    camera.position.add(velocity.current.clone().multiplyScalar(delta));
-    camera.lookAt(new THREE.Vector3(0, 0, 0));
+    const smoothing = 0.05; // Try values between 0.01 (slow) and 0.1 (fast)
+    camera.position.lerp(targetPos, smoothing);
+    camera.lookAt(new THREE.Vector3(-4, 2, -2));
   });
 
   return null;
@@ -249,21 +242,11 @@ export default function KeyboardScene({ onKeyPress }) {
         </Canvas>
       </Pressable>
       
-      <View style={styles.debugPanel} pointerEvents="none">
-        <Text style={styles.debugText}>{debugInfo}</Text>
-      </View>
-
       <Pressable style={styles.zoomButton} onPress={handleZoomToggle}>
         <Text ref={buttonTextRef} style={styles.zoomButtonText}>
           TAP HERE
         </Text>
       </Pressable>
-
-      <View style={styles.hint} pointerEvents="none">
-        <Text ref={hintTextRef} style={styles.hintText}>
-          Explore the keyboard 👆
-        </Text>
-      </View>
 
       <View style={styles.indicator} pointerEvents="none">
         <Text ref={stateTextRef} style={styles.indicatorText}>

@@ -3,15 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as THREE from 'three';
 
-// Camera positions (that's it!)
+// Camera positions
 const CAMERA_STATES = {
   ZOOMED_OUT: {
     position: new THREE.Vector3(20, 30, 25),
     lookAt: new THREE.Vector3(0, 0, 0),
   },
   ZOOMED_IN: {
-    position: new THREE.Vector3(0, 20, 18),
-    lookAt: new THREE.Vector3(-4, 2, -2),
+    position: new THREE.Vector3(0, 8, 18),
+    lookAt: new THREE.Vector3(0, 0, 0),
   }
 };
 
@@ -49,53 +49,39 @@ const languageNames = {
 };
 
 // ============================================
-// SIMPLE CAMERA - No bullshit
+// CAMERA - Uses ref, no React state!
 // ============================================
-function CameraController({ isZoomedIn }) {
+function CameraController({ isZoomedInRef }) {
   const { camera } = useThree();
   
-  // Spring physics state
   const velocity = useRef(new THREE.Vector3());
-  const currentTarget = useRef(CAMERA_STATES.ZOOMED_OUT.position.clone());
   const autoRotateAngle = useRef(0);
-  const lastZoomState = useRef(isZoomedIn);
-  const frameCount = useRef(0);
+  const lastZoomState = useRef(false);
   
   useEffect(() => {
-    console.log('⏱️ CameraController mounted');
     camera.position.copy(CAMERA_STATES.ZOOMED_OUT.position);
   }, [camera]);
 
   useFrame((state, delta) => {
-    frameCount.current++;
+    const isZoomedIn = isZoomedInRef.current;
     
-    // CRITICAL FIX: When zoom state changes, boost velocity for instant response
+    // Detect state change
     if (lastZoomState.current !== isZoomedIn) {
-      const t0 = Date.now();
-      console.log(`⏱️ [Frame ${frameCount.current}] Zoom state changed!`);
-      console.log(`   From: ${lastZoomState.current} → To: ${isZoomedIn}`);
-      
+      console.log(`⏱️ [INSTANT] Zoom ${isZoomedIn ? 'IN' : 'OUT'} detected in useFrame`);
       lastZoomState.current = isZoomedIn;
       
-      // Give it a velocity KICK toward the new target
+      // Velocity kick
       const newTarget = isZoomedIn ? CAMERA_STATES.ZOOMED_IN.position : CAMERA_STATES.ZOOMED_OUT.position;
       const direction = new THREE.Vector3().subVectors(newTarget, camera.position).normalize();
-      velocity.current.copy(direction.multiplyScalar(15)); // Instant boost!
-      
-      const t1 = Date.now();
-      console.log(`⏱️ [${t1 - t0}ms] Velocity kick applied`);
-      console.log(`🚀 Zoom ${isZoomedIn ? 'IN' : 'OUT'} - animation starting NOW!`);
+      velocity.current.copy(direction.multiplyScalar(15));
     }
     
-    // Determine target based on zoom state
+    // Determine target
     let targetPos;
-    let targetLookAt = new THREE.Vector3(0, 0, 0);
     
     if (isZoomedIn) {
-      // Zoomed in - static position
       targetPos = CAMERA_STATES.ZOOMED_IN.position;
     } else {
-      // Zoomed out - auto-rotate
       autoRotateAngle.current += delta * 0.3;
       const radius = 35;
       targetPos = new THREE.Vector3(
@@ -105,9 +91,9 @@ function CameraController({ isZoomedIn }) {
       );
     }
     
-    // Spring physics (simple and fast)
-    const stiffness = 10.0; // Snappy!
-    const damping = 0.8;    // Smooth!
+    // Spring physics
+    const stiffness = 10.0;
+    const damping = 0.8;
     
     const displacement = new THREE.Vector3().subVectors(targetPos, camera.position);
     const force = displacement.multiplyScalar(stiffness);
@@ -115,16 +101,14 @@ function CameraController({ isZoomedIn }) {
     
     velocity.current.add(force.add(dampingForce).multiplyScalar(delta));
     camera.position.add(velocity.current.clone().multiplyScalar(delta));
-    camera.lookAt(targetLookAt);
+    camera.lookAt(new THREE.Vector3(0, 0, 0));
   });
 
   return null;
 }
 
-// ============================================
-// SCENE CONTENT - Load once, render forever
-// ============================================
-function SceneContent({ isZoomedIn, onReady }) {
+// Scene setup
+function SceneContent({ isZoomedInRef, onReady }) {
   const { camera, scene, gl } = useThree();
   const setupDone = useRef(false);
 
@@ -153,33 +137,27 @@ function SceneContent({ isZoomedIn, onReady }) {
       <directionalLight position={[10, 10, 10]} intensity={2} />
       <directionalLight position={[-10, 10, 10]} intensity={1.5} />
       <directionalLight position={[0, -5, 10]} intensity={1.2} />
-      <CameraController isZoomedIn={isZoomedIn} />
+      <CameraController isZoomedInRef={isZoomedInRef} />
     </>
   );
 }
 
 // ============================================
-// MAIN COMPONENT - Clean and simple
+// MAIN - Minimal React state!
 // ============================================
 export default function KeyboardScene({ onKeyPress }) {
-  const [isZoomedIn, setIsZoomedIn] = useState(false);
+  // USE REF INSTEAD OF STATE!
+  const isZoomedInRef = useRef(false);
   const [debugInfo, setDebugInfo] = useState('Ready');
+  
+  // Refs for UI elements (manual updates)
+  const buttonTextRef = useRef(null);
+  const hintTextRef = useRef(null);
+  const stateTextRef = useRef(null);
   
   const sceneRef = useRef(null);
   const raycaster = useRef(new THREE.Raycaster()).current;
-  
-  // Timer to track state changes
-  const stateChangeTimer = useRef(Date.now());
 
-  // Track isZoomedIn changes
-  useEffect(() => {
-    const now = Date.now();
-    const elapsed = now - stateChangeTimer.current;
-    console.log(`⏱️ [${elapsed}ms after button tap] isZoomedIn changed to: ${isZoomedIn}`);
-    stateChangeTimer.current = now;
-  }, [isZoomedIn]);
-
-  // Raycast for keycap detection
   const performRaycast = useCallback((x, y) => {
     if (!sceneRef.current || !global.clickableKeycaps) return null;
 
@@ -200,7 +178,6 @@ export default function KeyboardScene({ onKeyPress }) {
       if (language) {
         setDebugInfo(`Hit: ${languageNames[language]}`);
         
-        // Visual feedback
         const obj = intersects[0].object;
         if (obj.material?.emissive) {
           const orig = obj.material.emissive.getHex();
@@ -220,31 +197,42 @@ export default function KeyboardScene({ onKeyPress }) {
   }, []);
 
   const handleZoomToggle = useCallback(() => {
-    console.log('⏱️ [0ms] Button tap detected');
+    console.log('⏱️ [0ms] Button tap - updating ref directly');
     const t0 = Date.now();
     
-    setIsZoomedIn(prev => {
-      const t1 = Date.now();
-      console.log(`⏱️ [${t1 - t0}ms] Inside setIsZoomedIn`);
-      console.log(`   Previous state: ${prev}`);
-      console.log(`   New state: ${!prev}`);
-      return !prev;
-    });
+    // UPDATE REF DIRECTLY (no React re-render!)
+    isZoomedInRef.current = !isZoomedInRef.current;
+    const newState = isZoomedInRef.current;
     
-    const t2 = Date.now();
-    console.log(`⏱️ [${t2 - t0}ms] setIsZoomedIn completed`);
+    // Manually update UI elements
+    if (buttonTextRef.current) {
+      buttonTextRef.current.setNativeProps({ 
+        text: newState ? 'ZOOM OUT' : 'TAP HERE' 
+      });
+    }
+    if (hintTextRef.current) {
+      hintTextRef.current.setNativeProps({ 
+        text: newState ? 'Tap keys to select 🎹' : 'Explore the keyboard 👆' 
+      });
+    }
+    if (stateTextRef.current) {
+      stateTextRef.current.setNativeProps({ 
+        text: newState ? '🔍 ZOOMED' : '🌐 ROTATING' 
+      });
+    }
+    
+    const t1 = Date.now();
+    console.log(`⏱️ [${t1 - t0}ms] Ref + UI updated (NO React re-render!)`);
   }, []);
 
   const handleCanvasTap = useCallback((event) => {
-    if (!isZoomedIn) return;
-    
     const { locationX, locationY } = event.nativeEvent;
     const language = performRaycast(locationX, locationY);
     
     if (language) {
       onKeyPress?.(language);
     }
-  }, [isZoomedIn, performRaycast, onKeyPress]);
+  }, [performRaycast, onKeyPress]);
 
   return (
     <View style={styles.container}>
@@ -255,7 +243,7 @@ export default function KeyboardScene({ onKeyPress }) {
           style={{ flex: 1 }}
         >
           <SceneContent 
-            isZoomedIn={isZoomedIn}
+            isZoomedInRef={isZoomedInRef}
             onReady={handleSceneReady}
           />
         </Canvas>
@@ -266,20 +254,20 @@ export default function KeyboardScene({ onKeyPress }) {
       </View>
 
       <Pressable style={styles.zoomButton} onPress={handleZoomToggle}>
-        <Text style={styles.zoomButtonText}>
-          {isZoomedIn ? 'ZOOM OUT' : 'TAP HERE'}
+        <Text ref={buttonTextRef} style={styles.zoomButtonText}>
+          TAP HERE
         </Text>
       </Pressable>
 
       <View style={styles.hint} pointerEvents="none">
-        <Text style={styles.hintText}>
-          {isZoomedIn ? 'Tap keys to select 🎹' : 'Explore the keyboard 👆'}
+        <Text ref={hintTextRef} style={styles.hintText}>
+          Explore the keyboard 👆
         </Text>
       </View>
 
       <View style={styles.indicator} pointerEvents="none">
-        <Text style={styles.indicatorText}>
-          {isZoomedIn ? '🔍 ZOOMED' : '🌐 ROTATING'}
+        <Text ref={stateTextRef} style={styles.indicatorText}>
+          🌐 ROTATING
         </Text>
       </View>
     </View>

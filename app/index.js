@@ -1,141 +1,228 @@
+console.log('✅ index.js is loading...');
 import { useRouter } from 'expo-router';
-import React from 'react';
-import {
-  Animated,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
+import { preloadKeyboardModel, preloadLogoTextures } from '../utils/preloader';
 
-export default function WelcomeScreen() {
+export default function Index() {
   const router = useRouter();
-  const fadeAnim = React.useRef(new Animated.Value(0)).current;
-  const scaleAnim = React.useRef(new Animated.Value(0.9)).current;
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState([]);
+  const cursorBlink = useRef(new Animated.Value(1)).current;
 
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  // Cursor blinking animation
+  useEffect(() => {
+    const blinkAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(cursorBlink, {
+          toValue: 0,
+          duration: 530,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cursorBlink, {
+          toValue: 1,
+          duration: 530,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    blinkAnimation.start();
+    return () => blinkAnimation.stop();
   }, []);
 
-  const handleStart = () => {
-    router.replace('/home');
+  // Add a log entry
+  const addLog = (message, percent = null) => {
+    setLoadingLogs(prev => [...prev, { message, percent, timestamp: Date.now() }]);
   };
 
-  const handleLogin = () => {
-    router.push('/login');
-  };
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        console.log('🚀 Initializing asset preloading...');
+        const startTime = Date.now();
 
-  return (
-    <View style={styles.container}>
-      {/* Login Button */}
-      <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-        <Text style={styles.loginText}>login</Text>
-      </TouchableOpacity>
+        addLog('Initializing Portfolio Showcase V1.0...');
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-      {/* Main Content */}
-      <Animated.View
-        style={[
-          styles.contentBox,
-          {
-            opacity: fadeAnim,
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
-        <Text style={styles.title}>Michael Rey Belga</Text>
-        <Text style={styles.subtitle}>Portfolio Showcase 2025</Text>
+        addLog('Checking system resources...');
+        await new Promise(resolve => setTimeout(resolve, 200));
 
-        <View style={styles.warningBox}>
-          <Text style={styles.warningLabel}>Warning</Text>
-          <Text style={styles.warningText}>
-            : this is best viewed on android.
+        addLog('Allocating memory for 3D rendering...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // REAL progress callback
+        const handleProgress = (stage, percent, message) => {
+          console.log(`[${stage}] ${percent}% - ${message}`);
+          
+          const stageLabels = {
+            loading: 'Loading GLB file from storage',
+            parsing: 'Parsing GLTF structure',
+            cloning: 'Cloning model (158 meshes, 144 materials)',
+            caching: 'Building interaction cache',
+            complete: 'Assets ready',
+            error: 'Error',
+          };
+
+          const label = stageLabels[stage] || message;
+          
+          // Add log with progress percentage
+          if (percent === 0) {
+            addLog(`${label}...`, 0);
+          } else if (percent === 100) {
+            addLog(`${label}...`, 100);
+          } else if (stage === 'cloning' && percent % 15 === 0) {
+            // Update cloning progress every 15%
+            addLog(`${label}...`, percent);
+          }
+        };
+
+        addLog('Starting asset preload...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Run the ACTUAL preload with REAL progress tracking
+        const result = await preloadKeyboardModel(handleProgress);
+
+        console.log('✅ Preload complete:', result);
+
+        // Preload logo textures
+        addLog('Loading logo textures...');
+        await preloadLogoTextures((stage, percent, message) => {
+          console.log(`[Logos ${stage}] ${percent}% - ${message}`);
+          if (percent === 100) {
+            addLog('Logo textures loaded', 100);
+          }
+        });
+
+        const loadTime = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`✅ TOTAL LOAD TIME: ${loadTime}s`);
+        
+        addLog(`All assets loaded in ${loadTime}s`, 100);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        addLog("Launching 'Portfolio Showcase V1.0'...");
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        setIsInitialized(true);
+        router.replace('/welcome');
+
+      } catch (error) {
+        console.warn('Initialization failed, continuing anyway:', error);
+        addLog(`ERROR: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setIsInitialized(true);
+        router.replace('/welcome');
+      }
+    };
+
+    initializeApp();
+  }, [router]);
+
+  if (!isInitialized) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.terminal}>
+          <Text style={styles.header}>
+            PORTFOLIO LOADING SYSTEM V1.0
           </Text>
-        </View>
+          <Text style={styles.header}>
+            {'='.repeat(50)}
+          </Text>
+          
+          <Text style={styles.blank}>{'\n'}</Text>
 
-        <TouchableOpacity style={styles.startButton} onPress={handleStart}>
-          <Text style={styles.startButtonText}>start</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </View>
-  );
+          {/* Terminal-style loading logs */}
+          {loadingLogs.map((log, index) => (
+            <View key={index} style={styles.logLine}>
+              <Text style={styles.logText}>
+                {'> '}{log.message}
+              </Text>
+              {log.percent !== null && (
+                <Text style={styles.percentText}>
+                  {' '}{log.percent}%
+                </Text>
+              )}
+            </View>
+          ))}
+
+          {/* Blinking cursor */}
+          <View style={styles.cursorLine}>
+            <Animated.Text style={[styles.cursor, { opacity: cursorBlink }]}>
+              _
+            </Animated.Text>
+          </View>
+
+          {/* Hint at bottom */}
+          {loadingLogs.length > 5 && (
+            <Text style={styles.hintText}>
+              {'\n'}
+              {loadingLogs.some(log => log.message.includes('Cloning')) && 
+                'Cloning 144 materials - this takes 10-15s on most devices...'}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  return null;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
-  loginButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  terminal: {
+    width: '100%',
+    maxWidth: 500,
   },
-  loginText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000',
+  header: {
+    color: 'rgba(255, 255, 255, 1)',
+    fontSize: 14,
+    fontFamily: 'monospace',
+    marginBottom: 5,
   },
-  contentBox: {
-    backgroundColor: '#fff',
-    borderWidth: 4,
-    borderColor: '#000',
-    padding: 40,
-    width: '85%',
+  blank: {
+    color: 'rgba(255, 255, 255, 1)',
+    fontSize: 14,
+    fontFamily: 'monospace',
+  },
+  logLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000',
-    textAlign: 'center',
     marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    textAlign: 'center',
-    marginBottom: 30,
+  logText: {
+    color: 'rgba(255, 255, 255, 1)',
+    fontSize: 13,
+    fontFamily: 'monospace',
+    flex: 1,
   },
-  warningBox: {
-    flexDirection: 'row',
-    marginBottom: 40,
-  },
-  warningLabel: {
-    fontSize: 16,
+  percentText: {
+    color: 'rgba(255, 255, 255, 1)',
+    fontSize: 13,
+    fontFamily: 'monospace',
     fontWeight: 'bold',
-    color: '#ff0000',
+    minWidth: 50,
+    textAlign: 'right',
   },
-  warningText: {
+  hintText: {
+    color: '#888',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    fontStyle: 'italic',
+    marginTop: 10,
+  },
+  cursorLine: {
+    marginTop: 10,
+  },
+  cursor: {
+    color: 'rgba(255, 255, 255, 1)',
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
-  },
-  startButton: {
-    backgroundColor: '#333',
-    paddingVertical: 16,
-    paddingHorizontal: 60,
-    borderRadius: 30,
-  },
-  startButtonText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontFamily: 'monospace',
   },
 });

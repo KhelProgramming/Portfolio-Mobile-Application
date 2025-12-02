@@ -1,9 +1,32 @@
 // utils/preloader.js
 import { Asset } from 'expo-asset';
+import * as THREE from 'three';
 import { GLTFLoader } from 'three-stdlib';
 
 /**
+ * Create a texture from an asset URI (React Native / Expo compatible)
+ * This bypasses the DOM-dependent THREE.TextureLoader
+ */
+function createTextureFromURI(uri) {
+  const texture = new THREE.Texture();
+  
+  // In React Native, we need to handle the image differently
+  // The texture will be properly loaded by @react-three/fiber when used
+  texture.image = { src: uri };
+  texture.needsUpdate = true;
+  
+  // Optimize for mobile
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  texture.flipY = false;
+  
+  return texture;
+}
+
+/**
  * Preload logo textures for the floating icons
+ * Returns URIs that will be used by @react-three/fiber's texture system
  */
 export async function preloadLogoTextures(onProgress) {
   try {
@@ -20,10 +43,13 @@ export async function preloadLogoTextures(onProgress) {
       require('../assets/logos/github.png'),
     ]);
 
-    console.log(`✅ Loaded ${logoAssets.length} logo textures`);
+    console.log(`✅ Loaded ${logoAssets.length} logo assets`);
     
-    // Store the URIs in global for easy access
-    global.logoTextures = {
+    onProgress?.('loading', 50, 'Processing textures');
+
+    // Store URIs for use in the scene
+    // @react-three/fiber will handle actual texture loading
+    global.logoTextureURIs = {
       javascript: logoAssets[0].localUri || logoAssets[0].uri,
       css: logoAssets[1].localUri || logoAssets[1].uri,
       python: logoAssets[2].localUri || logoAssets[2].uri,
@@ -32,9 +58,10 @@ export async function preloadLogoTextures(onProgress) {
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`🎉 Logo textures preloaded in ${totalTime}s`);
+    console.log('Texture URIs:', global.logoTextureURIs);
     onProgress?.('complete', 100, 'Logos ready');
 
-    return global.logoTextures;
+    return global.logoTextureURIs;
   } catch (error) {
     console.error('❌ Logo texture preload failed:', error);
     onProgress?.('error', 0, error.message);
@@ -95,7 +122,6 @@ export async function preloadKeyboardModel(onProgress) {
       const loader = new GLTFLoader();
       
       // Extract the directory path from the localUri
-      // Example: file:///path/to/file.glb -> file:///path/to/
       let resourcePath = asset.localUri.substring(0, asset.localUri.lastIndexOf('/') + 1);
       
       // Ensure it ends with a slash for the loader
@@ -115,8 +141,6 @@ export async function preloadKeyboardModel(onProgress) {
         },
         (error) => {
           console.error('❌ GLTFLoader parse error:', error);
-          console.error('Asset URI:', asset.localUri);
-          console.error('Resource path:', resourcePath);
           reject(error);
         }
       );
@@ -130,21 +154,19 @@ export async function preloadKeyboardModel(onProgress) {
     global.keyboardModel = gltf.scene;
     console.log(`✅ Original model stored in global.keyboardModel`);
 
-    // Step 5: CLONE during loading screen (this is the 10-15s part)
-    // We'll simulate progress since THREE.js doesn't provide clone callbacks
+    // Step 5: CLONE during loading screen
     const meshCount = countMeshes(gltf.scene);
     const materialCount = countMaterials(gltf.scene);
     
     onProgress?.('cloning', 0, `Cloning model (${meshCount} meshes, ${materialCount} materials)`);
     console.log('🔄 Cloning model for scene use (this may take 10-15s)...');
-    console.log(`   Model has ${meshCount} meshes and ${materialCount} materials`);
     
     const cloneStart = Date.now();
     
-    // Start a progress simulator (since clone doesn't give us real progress)
+    // Progress simulator
     let cloneProgress = 0;
     const progressInterval = setInterval(() => {
-      cloneProgress = Math.min(cloneProgress + 5, 90); // Cap at 90% until done
+      cloneProgress = Math.min(cloneProgress + 5, 90);
       onProgress?.('cloning', cloneProgress, 'Cloning in progress...');
     }, 500);
     
@@ -157,11 +179,6 @@ export async function preloadKeyboardModel(onProgress) {
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`🎉 TOTAL PRELOAD TIME: ${totalTime}s`);
-    console.log(`   Breakdown:`);
-    console.log(`   - Asset load: ${loadTime}s`);
-    console.log(`   - Fetch file: ${fetchTime}s`);
-    console.log(`   - Parse GLTF: ${parseTime}s`);
-    console.log(`   - Clone model: ${cloneTime}s`);
     
     onProgress?.('complete', 100, 'All assets ready!');
 
@@ -179,10 +196,6 @@ export async function preloadKeyboardModel(onProgress) {
 
   } catch (error) {
     console.error('❌ Keyboard model preload failed:', error);
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-    });
     onProgress?.('error', 0, error.message);
     throw error;
   }
@@ -217,9 +230,10 @@ function countMaterials(object) {
 }
 
 /**
- * Clean up preloaded assets (call this when unmounting the app)
+ * Clean up preloaded assets
  */
 export function cleanupKeyboardModel() {
+  // Dispose model
   if (global.keyboardModelCloned) {
     global.keyboardModelCloned.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
@@ -235,7 +249,7 @@ export function cleanupKeyboardModel() {
   }
   
   global.keyboardModel = null;
-  global.logoTextures = null;
+  global.logoTextureURIs = null;
   
-  console.log('🧹 Keyboard model and logos cleaned up');
+  console.log('🧹 All assets cleaned up');
 }

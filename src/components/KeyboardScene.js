@@ -1,332 +1,473 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import * as THREE from 'three';
 
 // Camera positions
 const CAMERA_STATES = {
-  ZOOMED_OUT: {
-    position: new THREE.Vector3(20, 30, 25),
-    lookAt: new THREE.Vector3(0, 0, 0),
-  },
-  ZOOMED_IN: {
-    position: new THREE.Vector3(0, 20, 18),
-    lookAt: new THREE.Vector3(0, 0, 0),
-  }
+  ZOOMED_OUT: {
+    position: new THREE.Vector3(20, 30, 25),
+    lookAt: new THREE.Vector3(0, 0, 0),
+  },
+  ZOOMED_IN: {
+    position: new THREE.Vector3(0, 20, 18),
+    lookAt: new THREE.Vector3(0, 0, 0),
+  }
 };
 
-// Keycap mapping
-const KEYCAP_MAP = {
-  'Key-HTML5018': 'html5',
-  'Key-CSS026': 'css5',
-  'Key-Github017': 'github',
-  'Key-C011': 'c',
-  'Key-Python022': 'python',
-  'Key-Typescript028': 'typescript',
-  'Key-React029': 'react',
-  'Key-Java016': 'java',
-  'Key-Unity019': 'unity',
-  'Key-CSharp020': 'csharp',
-  'Key-Javascript021': 'javascript',
-  'Cube021_1': 'c',
-  'Cube021_2': 'c',
-  'Cube035_1': 'python',
-  'Cube035_2': 'python',
-};
-
-const languageNames = {
-  'html5': 'HTML5',
-  'css5': 'CSS',
-  'github': 'GitHub',
-  'c': 'C Language',
-  'python': 'Python',
-  'typescript': 'TypeScript',
-  'react': 'React',
-  'java': 'Java',
-  'unity': 'Unity',
-  'csharp': 'C#',
-  'javascript': 'JavaScript',
-};
+// Logo configuration
+const LOGO_CONFIG = [
+  { 
+    id: 'javascript', 
+    name: 'JavaScript',
+    position: [-8, 11, -5],
+    color: '#F7DF1E',
+    techStack: 'JavaScript'
+  },
+  { 
+    id: 'css', 
+    name: 'CSS',
+    position: [-6, 6, -3],
+    color: '#1572B6',
+    techStack: 'CSS'
+  },
+  { 
+    id: 'python', 
+    name: 'Python',
+    position: [-4, 10, -4],
+    color: '#3776AB',
+    techStack: 'Python'
+  },
+  { 
+    id: 'github', 
+    name: 'GitHub',
+    position: [-1, 8, -2],
+    color: '#ffffff',
+    techStack: null
+  },
+];
 
 // ============================================
-// CAMERA - Uses ref, no React state!
+// FLOATING LOGO - SIMPLE CUBE
+// ============================================
+function FloatingLogo({ config, isZoomedInRef, onClick }) {
+  const meshRef = useRef();
+  const glowRef = useRef();
+  const timeOffset = useRef(Math.random() * Math.PI * 2);
+  const bobSpeed = useRef(0.5 + Math.random() * 0.5);
+  const bobAmount = useRef(0.3 + Math.random() * 0.3);
+
+  useFrame((state) => {
+    if (!meshRef.current) return;
+    
+    const isZoomedIn = isZoomedInRef.current;
+    const time = state.clock.elapsedTime;
+    const baseY = config.position[1];
+    
+    // Show/hide instantly
+    meshRef.current.visible = isZoomedIn;
+    if (glowRef.current) glowRef.current.visible = isZoomedIn;
+    
+    if (isZoomedIn) {
+      // Bob up and down
+      meshRef.current.position.y = baseY + Math.sin(time * bobSpeed.current + timeOffset.current) * bobAmount.current;
+      
+      // Rotate slowly
+      meshRef.current.rotation.x = time * 0.2;
+      meshRef.current.rotation.y = time * 0.3;
+      
+      // Sync glow position
+      if (glowRef.current) {
+        glowRef.current.position.copy(meshRef.current.position);
+        glowRef.current.rotation.copy(meshRef.current.rotation);
+      }
+    }
+  });
+
+  return (
+    <group>
+      {/* Main cube */}
+      <mesh
+        ref={meshRef}
+        position={config.position}
+        onClick={onClick}
+        onPointerDown={onClick}
+        visible={false}
+      >
+        <boxGeometry args={[1.5, 1.5, 1.5]} />
+        <meshStandardMaterial 
+          color={config.color} 
+          metalness={0.4}
+          roughness={0.3}
+          emissive={config.color}
+          emissiveIntensity={0.2}
+        />
+      </mesh>
+      
+      {/* Glow outline */}
+      <mesh
+        ref={glowRef}
+        position={config.position}
+        visible={false}
+      >
+        <boxGeometry args={[1.6, 1.6, 1.6]} />
+        <meshBasicMaterial 
+          color={config.color}
+          transparent
+          opacity={0.3}
+          wireframe
+        />
+      </mesh>
+    </group>
+  );
+}
+
+// ============================================
+// CAMERA CONTROLLER
 // ============================================
 function CameraController({ isZoomedInRef }) {
-  const { camera } = useThree();
-  
-  const velocity = useRef(new THREE.Vector3());
-  const autoRotateAngle = useRef(0);
-  const lastZoomState = useRef(false);
-  
-  useEffect(() => {
-    camera.position.copy(CAMERA_STATES.ZOOMED_OUT.position);
-  }, [camera]);
+  const { camera } = useThree();
+  const autoRotateAngle = useRef(0);
+  
+  useEffect(() => {
+    camera.position.copy(CAMERA_STATES.ZOOMED_OUT.position);
+  }, [camera]);
 
-  useFrame((state, delta) => {
-    const isZoomedIn = isZoomedInRef.current;
-    
-    // Detect state change
-    if (lastZoomState.current !== isZoomedIn) {
-      console.log(`⏱️ [INSTANT] Zoom ${isZoomedIn ? 'IN' : 'OUT'} detected in useFrame`);
-      lastZoomState.current = isZoomedIn;
-      
-      // Velocity kick
-      const newTarget = isZoomedIn ? CAMERA_STATES.ZOOMED_IN.position : CAMERA_STATES.ZOOMED_OUT.position;
-      const direction = new THREE.Vector3().subVectors(newTarget, camera.position).normalize();
-      velocity.current.copy(direction.multiplyScalar(15));
-    }
-    
-    // Determine target
-    let targetPos;
-    
-    if (isZoomedIn) {
-      targetPos = CAMERA_STATES.ZOOMED_IN.position;
-    } else {
-      autoRotateAngle.current += delta * 0.3;
-      const radius = 35;
-      targetPos = new THREE.Vector3(
-        Math.sin(autoRotateAngle.current) * radius,
-        30,
-        Math.cos(autoRotateAngle.current) * radius
-      );
-    }
-    
-    // Spring physics
-    const smoothing = 0.05; // Try values between 0.01 (slow) and 0.1 (fast)
-    camera.position.lerp(targetPos, smoothing);
-    camera.lookAt(new THREE.Vector3(-4, 2, -2));
-  });
+  useFrame((state, delta) => {
+    const isZoomedIn = isZoomedInRef.current;
+    let targetPos;
+    
+    if (isZoomedIn) {
+      targetPos = CAMERA_STATES.ZOOMED_IN.position;
+    } else {
+      autoRotateAngle.current += delta * 0.3;
+      const radius = 35;
+      targetPos = new THREE.Vector3(
+        Math.sin(autoRotateAngle.current) * radius,
+        30,
+        Math.cos(autoRotateAngle.current) * radius
+      );
+    }
+    
+    camera.position.lerp(targetPos, 0.05);
+    camera.lookAt(new THREE.Vector3(-4, 2, -2));
+  });
 
-  return null;
-}
-
-// Scene setup
-function SceneContent({ isZoomedInRef, onReady }) {
-  const { camera, scene, gl } = useThree();
-  const setupDone = useRef(false);
-
-  useEffect(() => {
-    if (setupDone.current || !global.keyboardModelCloned) return;
-    
-    scene.add(global.keyboardModelCloned);
-    
-    if (!global.clickableKeycaps) {
-      const keycaps = [];
-      global.keyboardModelCloned.traverse((child) => {
-        if (child.isMesh && KEYCAP_MAP[child.name]) {
-          keycaps.push(child);
-        }
-      });
-      global.clickableKeycaps = keycaps;
-    }
-    
-    setupDone.current = true;
-    onReady?.({ camera, scene, gl });
-  }, [camera, scene, gl, onReady]);
-
-  return (
-    <>
-      <ambientLight intensity={1} />
-      <directionalLight position={[10, 10, 10]} intensity={2} />
-      <directionalLight position={[-10, 10, 10]} intensity={1.5} />
-      <directionalLight position={[0, -5, 10]} intensity={1.2} />
-      <CameraController isZoomedInRef={isZoomedInRef} />
-    </>
-  );
+  return null;
 }
 
 // ============================================
-// MAIN - Minimal React state!
+// SCENE CONTENT
 // ============================================
-export default function KeyboardScene({ onKeyPress }) {
-  // USE REF INSTEAD OF STATE!
-  const isZoomedInRef = useRef(false);
-  const [debugInfo, setDebugInfo] = useState('Ready');
-  
-  // Refs for UI elements (manual updates)
-  const buttonTextRef = useRef(null);
-  const hintTextRef = useRef(null);
-  const stateTextRef = useRef(null);
-  
-  const sceneRef = useRef(null);
-  const raycaster = useRef(new THREE.Raycaster()).current;
+function SceneContent({ isZoomedInRef, onReady, onLogoClick }) {
+  const { camera, scene, gl } = useThree();
+  const setupDone = useRef(false);
 
-  const performRaycast = useCallback((x, y) => {
-    if (!sceneRef.current || !global.clickableKeycaps) return null;
+  useEffect(() => {
+    if (setupDone.current || !global.keyboardModelCloned) return;
+    
+    scene.add(global.keyboardModelCloned);
+    setupDone.current = true;
+    onReady?.({ camera, scene, gl });
+  }, [camera, scene, gl, onReady]);
 
-    const { camera, gl } = sceneRef.current;
-    const canvas = gl.domElement;
-    const rect = canvas.getBoundingClientRect();
-    
-    const pointer = new THREE.Vector2(
-      ((x - rect.left) / rect.width) * 2 - 1,
-      -((y - rect.top) / rect.height) * 2 + 1
-    );
+  return (
+    <>
+      <ambientLight intensity={1.2} />
+      <directionalLight position={[10, 10, 10]} intensity={2} />
+      <directionalLight position={[-10, 10, 10]} intensity={1.5} />
+      <directionalLight position={[0, -5, 10]} intensity={1.2} />
+      <pointLight position={[0, 15, 0]} intensity={1} distance={30} />
+      
+      <CameraController isZoomedInRef={isZoomedInRef} />
+      
+      {LOGO_CONFIG.map((config) => (
+        <FloatingLogo
+          key={config.id}
+          config={config}
+          isZoomedInRef={isZoomedInRef}
+          onClick={() => onLogoClick(config)}
+        />
+      ))}
+    </>
+  );
+}
 
-    raycaster.setFromCamera(pointer, camera);
-    const intersects = raycaster.intersectObjects(global.clickableKeycaps, false);
+// ============================================
+// PROJECT MODAL
+// ============================================
+function ProjectModal({ visible, onClose, techStack, projects, loading }) {
+  const filteredProjects = projects.filter(p => p.tech_stack === techStack);
 
-    if (intersects.length > 0) {
-      const language = KEYCAP_MAP[intersects[0].object.name];
-      if (language) {
-        setDebugInfo(`Hit: ${languageNames[language]}`);
-        
-        const obj = intersects[0].object;
-        if (obj.material?.emissive) {
-          const orig = obj.material.emissive.getHex();
-          obj.material.emissive.setHex(0x4a9eff);
-          setTimeout(() => obj.material.emissive?.setHex(orig), 200);
-        }
-        
-        return language;
-      }
-    }
-    return null;
-  }, [raycaster]);
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent={true}
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{techStack} Projects</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
 
-  const handleSceneReady = useCallback((sceneData) => {
-    sceneRef.current = sceneData;
-    setDebugInfo('✅ Ready');
-  }, []);
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#4a9eff" />
+            </View>
+          ) : filteredProjects.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No projects yet</Text>
+              <Text style={styles.emptyStateSubtext}>
+                No {techStack} projects found
+              </Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.projectList} showsVerticalScrollIndicator={false}>
+              {filteredProjects.map((project) => (
+                <View key={project.id} style={styles.projectCard}>
+                  <Text style={styles.projectTitle}>{project.title}</Text>
+                  {project.description && (
+                    <Text style={styles.projectDescription}>
+                      {project.description}
+                    </Text>
+                  )}
+                  {project.github_link && (
+                    <TouchableOpacity
+                      style={styles.githubLink}
+                      onPress={() => Linking.openURL(project.github_link)}
+                    >
+                      <Text style={styles.githubLinkText}>View on GitHub →</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
-  const handleZoomToggle = useCallback(() => {
-    console.log('⏱️ [0ms] Button tap - updating ref directly');
-    const t0 = Date.now();
-    
-    // UPDATE REF DIRECTLY (no React re-render!)
-    isZoomedInRef.current = !isZoomedInRef.current;
-    const newState = isZoomedInRef.current;
-    
-    // Manually update UI elements
-    if (buttonTextRef.current) {
-      buttonTextRef.current.setNativeProps({ 
-        text: newState ? 'ZOOM OUT' : 'TAP HERE' 
-      });
-    }
-    if (hintTextRef.current) {
-      hintTextRef.current.setNativeProps({ 
-        text: newState ? 'Tap keys to select 🎹' : 'Explore the keyboard 👆' 
-      });
-    }
-    if (stateTextRef.current) {
-      stateTextRef.current.setNativeProps({ 
-        text: newState ? '🔍 ZOOMED' : '🌐 ROTATING' 
-      });
-    }
-    
-    const t1 = Date.now();
-    console.log(`⏱️ [${t1 - t0}ms] Ref + UI updated (NO React re-render!)`);
-  }, []);
+// ============================================
+// MAIN COMPONENT
+// ============================================
+export default function KeyboardScene({ projects = [], loading = false }) {
+  const isZoomedInRef = useRef(false);
+  const [selectedTech, setSelectedTech] = useState(null);
+  
+  const buttonTextRef = useRef(null);
+  const stateTextRef = useRef(null);
+  const sceneRef = useRef(null);
 
-  const handleCanvasTap = useCallback((event) => {
-    const { locationX, locationY } = event.nativeEvent;
-    const language = performRaycast(locationX, locationY);
-    
-    if (language) {
-      onKeyPress?.(language);
-    }
-  }, [performRaycast, onKeyPress]);
+  const handleSceneReady = useCallback((sceneData) => {
+    sceneRef.current = sceneData;
+  }, []);
 
-  return (
-    <View style={styles.container}>
-      <Pressable style={styles.canvas} onPress={handleCanvasTap}>
-        <Canvas 
-          camera={{ position: [20, 30, 25], fov: 55 }}
-          gl={{ antialias: true, powerPreference: "high-performance" }}
-          style={{ flex: 1 }}
-        >
-          <SceneContent 
-            isZoomedInRef={isZoomedInRef}
-            onReady={handleSceneReady}
-          />
-        </Canvas>
-      </Pressable>
-      
-      <Pressable style={styles.zoomButton} onPress={handleZoomToggle}>
-        <Text ref={buttonTextRef} style={styles.zoomButtonText}>
-          TAP HERE
-        </Text>
-      </Pressable>
+  const handleZoomToggle = useCallback(() => {
+    isZoomedInRef.current = !isZoomedInRef.current;
+    const newState = isZoomedInRef.current;
+    
+    if (buttonTextRef.current) {
+      buttonTextRef.current.setNativeProps({ 
+        text: newState ? 'ZOOM OUT' : 'TAP TO ZOOM' 
+      });
+    }
+    if (stateTextRef.current) {
+      stateTextRef.current.setNativeProps({ 
+        text: newState ? '🔍 ZOOMED' : '🌐 ROTATING' 
+      });
+    }
+  }, []);
 
-      <View style={styles.indicator} pointerEvents="none">
-        <Text ref={stateTextRef} style={styles.indicatorText}>
-          🌐 ROTATING
-        </Text>
-      </View>
-    </View>
-  );
+  const handleLogoClick = useCallback((config) => {
+    if (config.id === 'github') {
+      Linking.openURL('https://github.com/KhelProgramming');
+    } else {
+      setSelectedTech(config.techStack);
+    }
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <Canvas 
+        camera={{ position: [20, 30, 25], fov: 55 }}
+        gl={{ antialias: true, powerPreference: "high-performance" }}
+        style={{ flex: 1 }}
+      >
+        <SceneContent 
+          isZoomedInRef={isZoomedInRef}
+          onReady={handleSceneReady}
+          onLogoClick={handleLogoClick}
+        />
+      </Canvas>
+      
+      <Pressable style={styles.zoomButton} onPress={handleZoomToggle}>
+        <Text ref={buttonTextRef} style={styles.zoomButtonText}>
+          TAP TO ZOOM
+        </Text>
+      </Pressable>
+
+      <View style={styles.indicator} pointerEvents="none">
+        <Text ref={stateTextRef} style={styles.indicatorText}>
+          🌐 ROTATING
+        </Text>
+      </View>
+
+      <ProjectModal
+        visible={selectedTech !== null}
+        onClose={() => setSelectedTech(null)}
+        techStack={selectedTech}
+        projects={projects}
+        loading={loading}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  canvas: {
-    flex: 1,
-  },
-  debugPanel: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    padding: 10,
-    borderRadius: 5,
-  },
-  debugText: {
-    color: '#00ff00',
-    fontSize: 10,
-    fontFamily: 'monospace',
-  },
-  zoomButton: {
-    position: 'absolute',
-    bottom: 100,
-    alignSelf: 'center',
-    paddingHorizontal: 40,
-    paddingVertical: 15,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#000000',
-    borderRadius: 8,
-  },
-  zoomButtonText: {
-    color: '#000000',
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-  },
-  hint: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  hintText: {
-    color: '#666',
-    fontSize: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  indicator: {
-    position: 'absolute',
-    top: 60,
-    right: 20,
-  },
-  indicatorText: {
-    color: '#000000',
-    fontSize: 12,
-    fontWeight: 'bold',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  zoomButton: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 15,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 8,
+  },
+  zoomButtonText: {
+    color: '#000000',
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+  },
+  indicator: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+  },
+  indicatorText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 18,
+    color: '#fff',
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#666',
+  },
+  projectList: {
+    flex: 1,
+  },
+  projectCard: {
+    backgroundColor: '#0a0a0a',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  projectTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  projectDescription: {
+    fontSize: 14,
+    color: '#aaa',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  githubLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#4a9eff',
+    borderRadius: 8,
+  },
+  githubLinkText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

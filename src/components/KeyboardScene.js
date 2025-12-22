@@ -39,14 +39,14 @@ const LOGO_CONFIG = [
     id: 'css', 
     name: 'CSS',
     position: [-6, 6, -3],
-    color: '#1572B6',
+    color: '#fcfcfcff',
     techStack: 'CSS'
   },
   { 
     id: 'python', 
     name: 'Python',
     position: [-4, 10, -4],
-    color: '#3776AB',
+    color: '#000000ff',
     techStack: 'Python'
   },
   { 
@@ -63,14 +63,46 @@ const LOGO_CONFIG = [
 // ============================================
 function FloatingLogo({ config, isZoomedInRef, onClick }) {
   const meshRef = useRef();
-  const glowRef = useRef();
+  const backgroundRef = useRef();
   const timeOffset = useRef(Math.random() * Math.PI * 2);
   const bobSpeed = useRef(0.5 + Math.random() * 0.5);
   const bobAmount = useRef(0.3 + Math.random() * 0.3);
 
-  // Load texture using expo-three's TextureLoader (React Native compatible)
+  // Load texture with error handling
   const textureURI = global.logoTextureURIs?.[config.id];
-  const texture = useLoader(TextureLoader, textureURI || '');
+  
+  // Only load texture if URI exists
+  let texture = null;
+  try {
+    if (textureURI) {
+      texture = useLoader(TextureLoader, textureURI);
+    }
+  } catch (error) {
+    console.warn(`Failed to load texture for ${config.id}:`, error);
+  }
+
+  // Configure texture for better quality
+  useEffect(() => {
+    if (texture) {
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      texture.needsUpdate = true;
+    }
+  }, [texture]);
+
+  // Determine background color based on logo
+  const getBackgroundColor = () => {
+    switch(config.id) {
+      case 'javascript': return '#F7DF1E';  // Yellow
+      case 'css': return '#ffffff';         // White
+      case 'python': return '#000000';      // Black
+      case 'github': return '#ffffff';      // White
+      default: return '#ffffff';
+    }
+  };
+
+  const backgroundColor = getBackgroundColor();
 
   useFrame((state) => {
     if (!meshRef.current) return;
@@ -81,7 +113,7 @@ function FloatingLogo({ config, isZoomedInRef, onClick }) {
     
     // Show/hide instantly
     meshRef.current.visible = isZoomedIn;
-    if (glowRef.current) glowRef.current.visible = isZoomedIn;
+    if (backgroundRef.current) backgroundRef.current.visible = isZoomedIn;
     
     if (isZoomedIn) {
       // Bob up and down
@@ -91,46 +123,49 @@ function FloatingLogo({ config, isZoomedInRef, onClick }) {
       meshRef.current.rotation.x = time * 0.2;
       meshRef.current.rotation.y = time * 0.3;
       
-      // Sync glow position
-      if (glowRef.current) {
-        glowRef.current.position.copy(meshRef.current.position);
-        glowRef.current.rotation.copy(meshRef.current.rotation);
+      // Sync background
+      if (backgroundRef.current) {
+        backgroundRef.current.position.copy(meshRef.current.position);
+        backgroundRef.current.rotation.copy(meshRef.current.rotation);
       }
     }
   });
 
   return (
     <group>
-      {/* Main textured cube */}
+      {/* Background cube with solid color */}
+      <mesh
+        ref={backgroundRef}
+        position={config.position}
+        visible={false}
+      >
+        <boxGeometry args={[1.5, 1.5, 1.5]} />
+        <meshStandardMaterial 
+          color={backgroundColor}
+          metalness={0.05}
+          roughness={0.8}
+        />
+      </mesh>
+
+      {/* Foreground textured cube with logo (transparent areas) */}
       <mesh
         ref={meshRef}
         position={config.position}
         onClick={onClick}
         onPointerDown={onClick}
         visible={false}
+        castShadow
+        receiveShadow
       >
-        <boxGeometry args={[1.5, 1.5, 1.5]} />
+        <boxGeometry args={[1.501, 1.501, 1.501]} />
         <meshStandardMaterial 
           map={texture}
-          metalness={0.3}
-          roughness={0.4}
-          emissive={config.color}
-          emissiveIntensity={0.15}
-        />
-      </mesh>
-      
-      {/* Glow outline */}
-      <mesh
-        ref={glowRef}
-        position={config.position}
-        visible={false}
-      >
-        <boxGeometry args={[1.6, 1.6, 1.6]} />
-        <meshBasicMaterial 
-          color={config.color}
-          transparent
-          opacity={0.3}
-          wireframe
+          metalness={0.05}
+          roughness={0.8}
+          transparent={true}
+          alphaTest={0.5}
+          side={THREE.FrontSide}
+          depthWrite={false}
         />
       </mesh>
     </group>
@@ -327,12 +362,6 @@ export default function KeyboardScene({ projects = [], loading = false }) {
           TAP TO ZOOM
         </Text>
       </Pressable>
-
-      <View style={styles.indicator} pointerEvents="none">
-        <Text ref={stateTextRef} style={styles.indicatorText}>
-          🌀 ROTATING
-        </Text>
-      </View>
 
       <ProjectModal
         visible={selectedTech !== null}

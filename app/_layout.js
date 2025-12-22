@@ -1,5 +1,17 @@
+// app/_layout.js
 import { Stack } from 'expo-router';
+import { LogBox } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+LogBox.ignoreLogs([
+  'Route "./index.js" is missing',
+  '_setGlobalConsole',
+  'No route named "index"',
+]);
+
+if (typeof global !== 'undefined') {
+  global.THREE = global.THREE || {};
+}
 
 export default function RootLayout() {
   return (
@@ -10,12 +22,7 @@ export default function RootLayout() {
           animation: 'fade',
           contentStyle: { backgroundColor: '#0a0a0a' },
         }}
-      >
-        <Stack.Screen name="index" options={{ animation: 'fade' }} />
-        <Stack.Screen name="home" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="login" options={{ animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="admin" options={{ gestureEnabled: false }} />
-      </Stack>
+      />
     </GestureHandlerRootView>
   );
 }
